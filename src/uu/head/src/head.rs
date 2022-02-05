@@ -6,7 +6,7 @@
 // spell-checker:ignore (vars) zlines BUFWRITER seekable
 
 use clap::{crate_version, App, AppSettings, Arg};
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryInto;
 use std::ffi::OsString;
 use std::io::{self, BufWriter, ErrorKind, Read, Seek, SeekFrom, Write};
 use uucore::display::Quotable;
@@ -106,8 +106,8 @@ pub fn uu_app<'a>() -> App<'a> {
 }
 #[derive(PartialEq, Debug, Clone, Copy)]
 enum Modes {
-    Lines(usize),
-    Bytes(usize),
+    Lines(u64),
+    Bytes(u64),
 }
 
 impl Default for Modes {
@@ -118,7 +118,7 @@ impl Default for Modes {
 
 fn parse_mode<F>(src: &str, closure: F) -> Result<(Modes, bool), String>
 where
-    F: FnOnce(usize) -> Modes,
+    F: FnOnce(u64) -> Modes,
 {
     match parse::parse_num(src) {
         Ok((n, last)) => Ok((closure(n), last)),
@@ -195,12 +195,12 @@ impl HeadOptions {
     }
 }
 
-fn read_n_bytes<R>(input: R, n: usize) -> std::io::Result<()>
+fn read_n_bytes<R>(input: R, n: u64) -> std::io::Result<()>
 where
     R: Read,
 {
     // Read the first `n` bytes from the `input` reader.
-    let mut reader = input.take(n as u64);
+    let mut reader = input.take(n);
 
     // Write those bytes to `stdout`.
     let stdout = std::io::stdout();
@@ -211,7 +211,7 @@ where
     Ok(())
 }
 
-fn read_n_lines(input: &mut impl std::io::BufRead, n: usize, zero: bool) -> std::io::Result<()> {
+fn read_n_lines(input: &mut impl std::io::BufRead, n: u64, zero: bool) -> std::io::Result<()> {
     // Read the first `n` lines from the `input` reader.
     let separator = if zero { b'\0' } else { b'\n' };
     let mut reader = take_lines(input, n, separator);
@@ -229,8 +229,9 @@ fn read_n_lines(input: &mut impl std::io::BufRead, n: usize, zero: bool) -> std:
 fn read_but_last_n_bytes(input: &mut impl std::io::BufRead, n: usize) -> std::io::Result<()> {
     if n == 0 {
         //prints everything
-        return read_n_bytes(input, std::usize::MAX);
+        return read_n_bytes(input, std::u64::MAX);
     }
+
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
 
@@ -331,17 +332,18 @@ fn read_but_last_n_lines(
 /// assert_eq!(find_nth_line_from_end(&mut input, 4, false).unwrap(), 0);
 /// assert_eq!(find_nth_line_from_end(&mut input, 1000, false).unwrap(), 0);
 /// ```
-fn find_nth_line_from_end<R>(input: &mut R, n: usize, zeroed: bool) -> std::io::Result<usize>
+fn find_nth_line_from_end<R>(input: &mut R, n: u64, zeroed: bool) -> std::io::Result<u64>
 where
     R: Read + Seek,
 {
     let size = input.seek(SeekFrom::End(0))?;
-    let size = usize::try_from(size).unwrap();
 
     let mut buffer = [0u8; BUF_SIZE];
-    let buffer = &mut buffer[..BUF_SIZE.min(size)];
-    let mut i = 0usize;
-    let mut lines = 0usize;
+    let buf_size: usize = (BUF_SIZE as u64).min(size).try_into().unwrap();
+    let buffer = &mut buffer[..buf_size];
+
+    let mut i = 0u64;
+    let mut lines = 0u64;
 
     loop {
         // the casts here are ok, `buffer.len()` should never be above a few k
@@ -377,7 +379,7 @@ fn head_backwards_file(input: &mut std::fs::File, options: &HeadOptions) -> std:
     assert!(options.all_but_last);
     match options.mode {
         Modes::Bytes(n) => {
-            let size = input.metadata()?.len().try_into().unwrap();
+            let size = input.metadata()?.len();
             if n >= size {
                 return Ok(());
             } else {
@@ -431,6 +433,18 @@ fn uu_head(options: &HeadOptions) -> UResult<()> {
                 match options.mode {
                     Modes::Bytes(n) => {
                         if options.all_but_last {
+                            // Outputting all but last requires us to use a ring buffer with size n,
+                            // so n must be converted from u64 to usize to fit in memory.
+                            let n: usize = match n.try_into() {
+                                Ok(n) => n,
+                                Err(n) => {
+                                    show!(USimpleError::new(
+                                        1,
+                                        format!("{}: number of bytes is too large", n)
+                                    ));
+                                    continue;
+                                }
+                            };
                             read_but_last_n_bytes(&mut stdin, n)
                         } else {
                             read_n_bytes(&mut stdin, n)
@@ -438,6 +452,18 @@ fn uu_head(options: &HeadOptions) -> UResult<()> {
                     }
                     Modes::Lines(n) => {
                         if options.all_but_last {
+                            // Outputting all but last requires us to use a ring buffer with size n,
+                            // so n must be converted from u64 to usize to fit in memory.
+                            let n: usize = match n.try_into() {
+                                Ok(n) => n,
+                                Err(n) => {
+                                    show!(USimpleError::new(
+                                        1,
+                                        format!("{}: number of bytes is too large", n)
+                                    ));
+                                    continue;
+                                }
+                            };
                             read_but_last_n_lines(&mut stdin, n, options.zeroed)
                         } else {
                             read_n_lines(&mut stdin, n, options.zeroed)

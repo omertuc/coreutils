@@ -1,6 +1,6 @@
 use uucore::parse_size::{parse_size, ParseSizeError};
 
-pub fn parse_number_of_bytes(s: &str) -> Result<usize, ParseSizeError> {
+pub fn parse_number_of_bytes(s: &str) -> Result<u64, ParseSizeError> {
     let mut start = 0;
     let mut len = s.len();
     let mut radix = 16;

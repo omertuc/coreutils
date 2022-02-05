@@ -80,8 +80,7 @@ impl Input<io::Stdin> {
         };
 
         if let Some(amt) = skip {
-            let mut buf = vec![BUF_INIT_BYTE; amt];
-            i.force_fill(&mut buf, amt)
+            i.read_skip(amt)
                 .map_err_context(|| "failed to read input".to_string())?;
         }
 
@@ -264,17 +263,16 @@ impl<R: Read> Input<R> {
         })
     }
 
-    /// Force-fills a buffer, ignoring zero-length reads which would otherwise be
-    /// interpreted as EOF.
-    /// Note: This will not return unless the source (eventually) produces
-    /// enough bytes to meet target_len.
-    fn force_fill(&mut self, buf: &mut [u8], target_len: usize) -> std::io::Result<usize> {
-        let mut base_idx = 0;
-        while base_idx < target_len {
-            base_idx += self.read(&mut buf[base_idx..target_len])?;
+    /// Skips target_len bytes from the Input by reading
+    fn read_skip(&mut self, amount_to_read: u64) -> std::io::Result<()> {
+        if let Ok(_) = io::copy(&mut self.src.by_ref().take(amount_to_read), &mut io::sink()) {
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "unexpected EOF",
+            ))
         }
-
-        Ok(base_idx)
     }
 }
 
@@ -301,8 +299,7 @@ impl OutputTrait for Output<io::Stdout> {
 
         // stdout is not seekable, so we just write null bytes.
         if let Some(amt) = seek {
-            let bytes = vec![b'\0'; amt];
-            dst.write_all(&bytes)
+            io::copy(&mut io::repeat(0u8).take(amt as u64), &mut dst)
                 .map_err_context(|| String::from("write error"))?;
         }
 
@@ -869,15 +866,14 @@ fn calc_loop_bsize(
 ) -> usize {
     match count {
         Some(CountType::Reads(rmax)) => {
-            let rmax: u64 = (*rmax).try_into().unwrap();
             let rsofar = rstat.reads_complete + rstat.reads_partial;
-            let rremain: usize = (rmax - rsofar).try_into().unwrap();
-            cmp::min(ideal_bsize, rremain * ibs)
+            let rremain = rmax - rsofar;
+            cmp::min(ideal_bsize as u64, rremain * ibs as u64) as usize
         }
         Some(CountType::Bytes(bmax)) => {
             let bmax: u128 = (*bmax).try_into().unwrap();
-            let bremain: usize = (bmax - wstat.bytes_total).try_into().unwrap();
-            cmp::min(ideal_bsize, bremain)
+            let bremain: u128 = bmax - wstat.bytes_total;
+            cmp::min(ideal_bsize as u128, bremain as u128) as usize
         }
         None => ideal_bsize,
     }

@@ -32,7 +32,7 @@ impl<'a> CommandLineOpts for ArgMatches {
 #[derive(PartialEq, Debug)]
 pub enum CommandLineInputs {
     FileNames(Vec<String>),
-    FileAndOffset((String, usize, Option<usize>)),
+    FileAndOffset((String, u64, Option<u64>)),
 }
 
 /// Interprets the command line inputs of od.

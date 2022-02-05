@@ -33,14 +33,14 @@ use crate::display::Quotable;
 /// assert_eq!(Ok(9 * 1000), parse_size("9kB")); // kB is 1000
 /// assert_eq!(Ok(2 * 1024), parse_size("2K")); // K is 1024
 /// ```
-pub fn parse_size(size: &str) -> Result<usize, ParseSizeError> {
+pub fn parse_size(size: &str) -> Result<u64, ParseSizeError> {
     if size.is_empty() {
         return Err(ParseSizeError::parse_failure(size));
     }
     // Get the numeric part of the size argument. For example, if the
     // argument is "123K", then the numeric part is "123".
     let numeric_string: String = size.chars().take_while(|c| c.is_digit(10)).collect();
-    let number: usize = if !numeric_string.is_empty() {
+    let number: u64 = if !numeric_string.is_empty() {
         match numeric_string.parse() {
             Ok(n) => n,
             Err(_) => return Err(ParseSizeError::parse_failure(size)),
@@ -75,7 +75,7 @@ pub fn parse_size(size: &str) -> Result<usize, ParseSizeError> {
         "YB" | "yB" => (1000, 8),
         _ => return Err(ParseSizeError::parse_failure(size)),
     };
-    let factor = match usize::try_from(base.pow(exponent)) {
+    let factor = match u64::try_from(base.pow(exponent)) {
         Ok(n) => n,
         Err(_) => return Err(ParseSizeError::size_too_big(size)),
     };
