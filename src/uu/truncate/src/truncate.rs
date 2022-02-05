@@ -17,13 +17,13 @@ use uucore::parse_size::{parse_size, ParseSizeError};
 
 #[derive(Debug, Eq, PartialEq)]
 enum TruncateMode {
-    Absolute(usize),
-    Extend(usize),
-    Reduce(usize),
-    AtMost(usize),
-    AtLeast(usize),
-    RoundDown(usize),
-    RoundUp(usize),
+    Absolute(u64),
+    Extend(u64),
+    Reduce(u64),
+    AtMost(u64),
+    AtLeast(u64),
+    RoundDown(u64),
+    RoundUp(u64),
 }
 
 impl TruncateMode {
@@ -52,7 +52,7 @@ impl TruncateMode {
     /// let fsize = 3;
     /// assert_eq!(mode.to_size(fsize), 0);
     /// ```
-    fn to_size(&self, fsize: usize) -> usize {
+    fn to_size(&self, fsize: u64) -> u64 {
         match self {
             TruncateMode::Absolute(size) => *size,
             TruncateMode::Extend(size) => fsize + size,
@@ -193,10 +193,10 @@ pub fn uu_app<'a>() -> App<'a> {
 ///
 /// If the file could not be opened, or there was a problem setting the
 /// size of the file.
-fn file_truncate(filename: &str, create: bool, size: usize) -> std::io::Result<()> {
+fn file_truncate(filename: &str, create: bool, size: u64) -> std::io::Result<()> {
     let path = Path::new(filename);
     let f = OpenOptions::new().write(true).create(create).open(path)?;
-    f.set_len(u64::try_from(size).unwrap())
+    f.set_len(size)
 }
 
 /// Truncate files to a size relative to a given file.
@@ -243,7 +243,7 @@ fn truncate_reference_and_size(
         ),
         _ => e.map_err_context(String::new),
     })?;
-    let fsize = metadata.len() as usize;
+    let fsize = metadata.len();
     let tsize = mode.to_size(fsize);
     for filename in filenames {
         file_truncate(filename, create, tsize)
@@ -278,7 +278,7 @@ fn truncate_reference_file_only(
         ),
         _ => e.map_err_context(String::new),
     })?;
-    let tsize = metadata.len() as usize;
+    let tsize = metadata.len();
     for filename in filenames {
         file_truncate(filename, create, tsize)
             .map_err_context(|| format!("cannot open {} for writing", filename.quote()))?;
@@ -312,7 +312,7 @@ fn truncate_size_only(size_string: &str, filenames: &[String], create: bool) -> 
             Ok(m) => m.len(),
             Err(_) => 0,
         };
-        let tsize = mode.to_size(fsize as usize);
+        let tsize = mode.to_size(fsize);
         match file_truncate(filename, create, tsize) {
             Ok(_) => continue,
             Err(e) if e.kind() == ErrorKind::NotFound && !create => continue,
