@@ -156,17 +156,17 @@ pub fn uu_app<'a>() -> App<'a> {
 /// The strategy for breaking up the input file into chunks.
 enum Strategy {
     /// Each chunk has the specified number of lines.
-    Lines(usize),
+    Lines(u64),
 
     /// Each chunk has the specified number of bytes.
-    Bytes(usize),
+    Bytes(u64),
 
     /// Each chunk has as many lines as possible without exceeding the
     /// specified number of bytes.
-    LineBytes(usize),
+    LineBytes(u64),
 
     /// Split the file into this many chunks.
-    Number(usize),
+    Number(u64),
 }
 
 impl Strategy {
@@ -204,7 +204,7 @@ impl Strategy {
             }
             (0, 0, 0, 1) => {
                 let s = matches.value_of(OPT_NUMBER).unwrap();
-                let n = s.parse::<usize>().map_err(|e| {
+                let n = s.parse::<u64>().map_err(|e| {
                     USimpleError::new(1, format!("invalid number of chunks: {}", e))
                 })?;
                 Ok(Self::Number(n))
@@ -272,11 +272,11 @@ trait Splitter {
 }
 
 struct LineSplitter {
-    lines_per_split: usize,
+    lines_per_split: u64,
 }
 
 impl LineSplitter {
-    fn new(chunk_size: usize) -> Self {
+    fn new(chunk_size: u64) -> Self {
         Self {
             lines_per_split: chunk_size,
         }
@@ -315,7 +315,7 @@ struct ByteSplitter {
 }
 
 impl ByteSplitter {
-    fn new(chunk_size: usize) -> Self {
+    fn new(chunk_size: u64) -> Self {
         Self {
             bytes_per_split: u128::try_from(chunk_size).unwrap(),
         }
@@ -373,7 +373,7 @@ impl Splitter for ByteSplitter {
 fn split_into_n_chunks_by_byte<R>(
     settings: &Settings,
     reader: &mut R,
-    num_chunks: usize,
+    num_chunks: u64,
 ) -> UResult<()>
 where
     R: Read,
@@ -382,7 +382,7 @@ where
     // of bytes per chunk.
     let metadata = metadata(&settings.input).unwrap();
     let num_bytes = metadata.len();
-    let chunk_size = (num_bytes / (num_chunks as u64)) as usize;
+    let chunk_size = (num_bytes / num_chunks) as usize;
 
     // This object is responsible for creating the filename for each chunk.
     let mut filename_iterator = FilenameIterator::new(
@@ -416,7 +416,7 @@ where
         // of bytes in the input file was not evenly divisible by
         // `num_chunks`, we don't leave any bytes behind.
         let mut buf = vec![0u8; chunk_size];
-        for writer in writers.iter_mut().take(num_chunks - 1) {
+        for writer in writers.iter_mut().take((num_chunks - 1) as usize) {
             reader.read_exact(&mut buf)?;
             writer.write_all(&buf)?;
         }
@@ -426,11 +426,11 @@ where
         // To do this, we resize our buffer to have the necessary number
         // of bytes.
         let i = num_chunks - 1;
-        let last_chunk_size = num_bytes as usize - (chunk_size * (num_chunks - 1));
+        let last_chunk_size = num_bytes as usize - (chunk_size * (num_chunks - 1) as usize);
         buf.resize(last_chunk_size, 0);
 
         reader.read_exact(&mut buf)?;
-        writers[i].write_all(&buf)?;
+        writers[i as usize].write_all(&buf)?;
 
         Ok(())
     }
